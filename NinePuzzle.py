@@ -38,6 +38,7 @@ class App(tk.Tk):
         self.wintext = None
         self.winbox = None
         self.moving = False
+        self.locked = False
         self.makeBoard()
         self.muted = True
         self.mainloop()
@@ -55,12 +56,17 @@ class App(tk.Tk):
             self.muteButton.config(image=self.muteimage)
 
     def shuffle(self):
+        if self.locked:
+            return
         self.boardState = shuffle(self.boardState)
         self.makeBoard()
 
     def autorun(self):
+        if self.locked:
+            return
         stateList = {}
         startArrangement = self.boardState
+        self.locked = True
         start = gameState(startArrangement, completedArrangement)
         stateList["".join(start.state)] = start
         start.shortestEstimatedDistance = start.heuristic
@@ -88,6 +94,8 @@ class App(tk.Tk):
             self.after(300, lambda n = nodeNumber+1: self.animateSolution(solution, n))
         else:
             self.solve.config(text="Solve it!")
+            self.locked=False
+
 
     def makeBoard(self):
         self.board.delete("all")
@@ -110,7 +118,7 @@ class App(tk.Tk):
                 self.board.tag_bind(square.textID, "<Button-1>", self.clicked)
 
     def clicked(self,e):
-        if self.moving:
+        if self.locked or self.moving:
             return
         squareclicked = self.IDs[self.board.find_closest(e.x, e.y)[0]]
         #find appropriate movement
@@ -165,21 +173,26 @@ class App(tk.Tk):
             self.moving = False
 
 
+
 class gameState():
+    # This is used in the Solve function. This is one node in the solution graph
     def __init__(self, state, target):
-        self.state = state
-        self.links = [(None,None),(None,None),(None,None),(None,None)]
-        self.shortestEstimatedDistance = None
-        self.distanceFromStart = 0
-        self.previousState = None
-        self.previousDirection = None
-        self.previousTile = None
-        self.target = target
-        self.visited = False
-        self.getAlternativeHeuristic()
+        self.target = target                   # Where are we headed? This is the completed arrangement
+        self.state = state # this is an array of the board contents
+        self.links = [(None,None),(None,None),(None,None),(None,None)] # there are up to 4 links, representing sliding a piece up,
+                                                                       # down, left or right into the space
+        self.shortestEstimatedDistance = None  # this is the estimated total path distance, as calculated by the A* Algorithm
+        self.visited = False                   # Have we visited this node in the A* Algorithm?
+        self.getAlternativeHeuristic()         # This calculated an estimated distance of this node to the target
+        self.distanceFromStart = 0             # this is the shortest distance TO this state from the starting position
+        self.previousState = None              # on the current best path, this holds a pointer to the stateobject previous to this one
+        self.previousDirection = None          # from the previous state, this was the move that was made to reach this state
+        self.previousTile = None               # and this is the tile that was moved. These are only used for the animation of the solution
+
 
         
     def printme(self):
+        # This was just for debugging. no longer needed
         print()
         for y in range(3):
             for x in range(3):
@@ -190,25 +203,29 @@ class gameState():
             print()
             
     def explore(self, stateList):
-        if self.state.index("0")%3 <2:
-            newstate, tileMoved = self.move("r")
-            if "".join(newstate) not in stateList.keys():
-                newstateobject = gameState(newstate, self.target)
-                stateList["".join(newstate)] = newstateobject
-            self.links[1] = stateList["".join(newstate)], tileMoved
-        if self.state.index("0")%3 >0:
-            newstate, tileMoved = self.move("l")
+        # Looks at all the possible nodes neighbouring this one, by moving tiles and seeing if that arrangement
+        # has already been seen
+        if self.state.index("0")%3 <2:  # Is there a tile to the right of the space?
+            newstate, tileMoved = self.move("r") # move the tile and get the new arrangement
+            if "".join(newstate) not in stateList.keys(): # if we have never need here before
+                newstateobject = gameState(newstate, self.target) # create the new gamestate node
+                stateList["".join(newstate)] = newstateobject # store it in a dictionary, for fast lookup
+            self.links[1] = stateList["".join(newstate)], tileMoved # put this new node into me list of links
+        # then we repeat with the other directions...
+
+        if self.state.index("0")%3 >0:# Is there a tile to the left of the space?
+            newstate, tileMoved = self.move("l") 
             if "".join(newstate) not in stateList.keys():
                 newstateobject = gameState(newstate, self.target)
                 stateList["".join(newstate)] = newstateobject
             self.links[3] = stateList["".join(newstate)], tileMoved
-        if self.state.index("0") >2 :
+        if self.state.index("0") >2 : # Is there a tile above the space?
             newstate, tileMoved = self.move("u")
             if "".join(newstate) not in stateList.keys():
                 newstateobject = gameState(newstate, self.target)
                 stateList["".join(newstate)] = newstateobject
             self.links[0] = stateList["".join(newstate)], tileMoved
-        if self.state.index("0") <6 :
+        if self.state.index("0") <6 :  # Is there a tile below the space?
             newstate, tileMoved = self.move("d")
             if "".join(newstate) not in stateList.keys():
                 newstateobject = gameState(newstate, self.target)
@@ -232,6 +249,7 @@ class gameState():
         return newstate, newstate[space] # send the new board position, and remember which tile was moved
                                          # (this is just for the benefit of the animation)
         
+
     def getAlternativeHeuristic(self):   # get the total of the distances that each block has to travel to it's target destination
         total = 0
         for x in range(9):
@@ -252,41 +270,45 @@ def solve(startBoard, target, stateList, app):
     running = True
     while running:
         moves +=1
-        if moves%100 == 0:
+        if moves%100 == 0: # Just a graphical flourish to show thinking
             dots = int(moves / 100) % 3
             app.solve.config(text="Thinking " + dots*"." + (3-dots)*" ")
             app.update()
-        currentNode.visited = True
-        currentNode.explore(stateList)
+
+        # This is the bulk of the A* algorithm
+        currentNode.visited = True  # Mark this node visited
+        currentNode.explore(stateList)  # Examine all neighbours and create nodes if necessary
         for direction in range(0,4):
             node, tileMoved = currentNode.links[direction]   # now check all the linked nodes to update distances
-            if node and not node.visited:
+            if node is not None and not node.visited:
                 if node.shortestEstimatedDistance is None or (currentNode.distanceFromStart + 1 + node.heuristic) < node.shortestEstimatedDistance:
-                    # this path to this node is better than the previous one, if any
-                    node.distanceFromStart = currentNode.distanceFromStart + 1
-                    node.shortestEstimatedDistance = node.distanceFromStart + node.heuristic
-                    node.previousState = currentNode
-                    node.previousDirection = direction
+                    # we have found a more efficient route to this node, so update the values in the table
+                    node.distanceFromStart = currentNode.distanceFromStart + 1 # The Path Distance
+                    node.shortestEstimatedDistance = node.distanceFromStart + node.heuristic # The total Path Distance
+                    node.previousState = currentNode # The "From" link
+                    node.previousDirection = direction # and these last two are just done to make the animation simpler
                     node.previousTile = tileMoved
+
         # now find the unvisited node with the closest estimated distance
         shortestDistance = None
         nextNode  = None
-        for state in stateList.values():
+        for state in stateList.values(): # We're checking all the states than have been explored. It's possible that
+                                         # there is a much more efficient method than this, because we're dealing with thousands of possible nodes
+
             if not state.visited and (shortestDistance == None or state.shortestEstimatedDistance <  shortestDistance):
                 shortestDistance = state.shortestEstimatedDistance
                 nextNode = state # this is the node with the shortest estimated distance
-        currentNode = nextNode
-        if currentNode.state == target: # The current node is the solution
-            running = False
+        currentNode = nextNode   # so we mark this as the next node to be visited and repeat
+        if currentNode.state == target: # If the current node is the solution
+            running = False # We're done, so break out of the loop
+
     solution = []
     while True:  # we have found the solution, so backtrack from the end node to find the full path
         solution.insert(0, currentNode)
         if currentNode.previousState == None:
             break
         currentNode = currentNode.previousState
-    #print("Found solution:")
-    #for node in solution:
-    #    node.printme()
+
     app.solve.config(text="Got it!")
     app.update()
     return solution

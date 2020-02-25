@@ -18,21 +18,41 @@ class App(tk.Tk):
         tk.Tk.__init__(self)
         self.titlefont = tkFont.Font(family="Arial", size=20, slant="italic")
         self.buttonFont = tkFont.Font(family="Arial", size=28)
+        self.title("Nine Puzzle")
         self.label = tk.Label(self, text="NinePuzzle", font=self.titlefont)
         self.label.grid(row=0, column=0, sticky="W")
         self.board = tk.Canvas(self, width=600,height = 600, bg="grey")
-        self.board.grid(row = 1, column = 0, columnspan=3 )
+        self.board.grid(row = 1, column = 0, columnspan=4)
         self.boardState = completedArrangement.copy()
         self.shufflebutton = tk.Button(self, text="Shuffle", font = self.titlefont, command = self.shuffle)
         self.shufflebutton.grid(row=0, column=1, sticky="E")
         self.solve = tk.Button(self, text="Solve it!", font=self.titlefont, command=self.autorun)
         self.solve.grid(row=0, column=2, sticky="EW")
+        self.muteimage = tk.PhotoImage(file="mute.png")
+        self.bind("<Escape>", self.quit)
+        self.unmuteimage = tk.PhotoImage(file="unmute.png")
+        self.muteButton = tk.Button(image = self.muteimage, command = self.mutepress)
+        self.muteButton.grid(row=0, column=3, sticky="NSEW")
         self.columnconfigure(1,weight=1)
         self.columnconfigure(2, minsize = 180)
+        self.wintext = None
+        self.winbox = None
         self.moving = False
-        self.gameActive = False
         self.makeBoard()
+        self.muted = True
         self.mainloop()
+        
+    def quit(self,e):
+        self.destroy()
+
+    def mutepress(self):
+        if self.muted:
+            self.muted = False
+            self.muteButton.config(image=self.unmuteimage)
+        else:
+            self.muted = True
+            PlaySound("silence.wav", SND_FILENAME|SND_ASYNC)
+            self.muteButton.config(image=self.muteimage)
 
     def shuffle(self):
         self.boardState = shuffle(self.boardState)
@@ -45,8 +65,9 @@ class App(tk.Tk):
         stateList["".join(start.state)] = start
         start.shortestEstimatedDistance = start.heuristic
         solution = solve(start, completedArrangement, stateList, self)
-        # now do the animation
-        self.animateSolution(solution, 0)
+        if solution is not None:
+            # now do the animation
+            self.animateSolution(solution, 0)
 
     def animateSolution(self, solution, nodeNumber):
         node = solution[nodeNumber]
@@ -65,6 +86,8 @@ class App(tk.Tk):
         self.boardState = node.state
         if nodeNumber < len(solution)-1:
             self.after(300, lambda n = nodeNumber+1: self.animateSolution(solution, n))
+        else:
+            self.solve.config(text="Solve it!")
 
     def makeBoard(self):
         self.board.delete("all")
@@ -115,17 +138,19 @@ class App(tk.Tk):
                 self.moveSquare(squareclicked, 10, 0, 20)
                 valid = True
         if valid:
+            self.board.delete("winbox")
+            self.board.delete("wintext")
+            PlaySound("silence.wav", SND_FILENAME|SND_ASYNC)
             self.boardState[zero] = squareclicked.text
             self.boardState[pos] = "0"
-        self.gameActive=True
-        self.board.after(300, self.checkWin)
+            self.board.after(300, self.checkWin)
 
     def checkWin(self):
-        if self.moving:
-            self.board.after(20, self.checkWin)
-        if self.gameActive:
-            if self.boardState == completedArrangement:
-                PlaySound("fanfare2.wav", SND_FILENAME)
+        if not self.moving and self.boardState == completedArrangement:
+            self.board.create_rectangle(0, 260, 600, 340, fill="white", tags="winbox")
+            self.board.create_text(300,300,text="You win!", font= self.buttonFont, tags="wintext")
+            if not self.muted:
+                PlaySound("fanfare2.wav", SND_FILENAME|SND_ASYNC)
 
     def moveSquare(self, square, xdiff, ydiff, loops):
         square.xpos += xdiff
@@ -207,16 +232,7 @@ class gameState():
         return newstate, newstate[space] # send the new board position, and remember which tile was moved
                                          # (this is just for the benefit of the animation)
         
-    def getHeuristic(self):
-        # we will count how many tiles are out of place
-        count = 0
-        for x in range(9):
-            if self.state[x] != self.target[x]:
-                count +=1
-        self.heuristic = count
-
-
-    def getAlternativeHeuristic(self):
+    def getAlternativeHeuristic(self):   # get the total of the distances that each block has to travel to it's target destination
         total = 0
         for x in range(9):
             total += abs(self.state.index(str(x))%3 - self.target.index(str(x))%3)
@@ -227,12 +243,12 @@ class gameState():
 def solve(startBoard, target, stateList, app):
     currentNode = startBoard
     moves = 0
-    print("Start position:")
-    currentNode.printme()
-    print("Thinking...")
+    #print("Start position:")
+    #currentNode.printme()
+    #print("Thinking...")
     if currentNode.state == target:
-        print("Already solved")
-        return
+        #print("Already solved")
+        return None
     running = True
     while running:
         moves +=1
@@ -268,9 +284,9 @@ def solve(startBoard, target, stateList, app):
         if currentNode.previousState == None:
             break
         currentNode = currentNode.previousState
-    print("Found solution:")
-    for node in solution:
-        node.printme()
+    #print("Found solution:")
+    #for node in solution:
+    #    node.printme()
     app.solve.config(text="Got it!")
     app.update()
     return solution

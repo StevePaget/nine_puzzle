@@ -2,7 +2,7 @@
 import random
 import tkinter as tk
 from tkinter import font as tkFont
-from winsound import *
+#from winsound import *
 from time import sleep
 
 
@@ -52,7 +52,7 @@ class App(tk.Tk):
             self.muteButton.config(image=self.unmuteimage)
         else:
             self.muted = True
-            PlaySound("silence.wav", SND_FILENAME|SND_ASYNC)
+            #PlaySound("silence.wav", SND_FILENAME|SND_ASYNC)
             self.muteButton.config(image=self.muteimage)
 
     def shuffle(self):
@@ -60,6 +60,7 @@ class App(tk.Tk):
             return
         self.boardState = shuffle(self.boardState)
         self.makeBoard()
+        self.solve.config(text="Solve it!")
 
     def autorun(self):
         if self.locked:
@@ -74,6 +75,7 @@ class App(tk.Tk):
         if solution is not None:
             # now do the animation
             self.animateSolution(solution, 0)
+        self.locked=False
 
     def animateSolution(self, solution, nodeNumber):
         node = solution[nodeNumber]
@@ -93,8 +95,8 @@ class App(tk.Tk):
         if nodeNumber < len(solution)-1:
             self.after(300, lambda n = nodeNumber+1: self.animateSolution(solution, n))
         else:
-            self.solve.config(text="Solve it!")
-            self.locked=False
+            self.solve.config(text="Solved in " + str(len(solution)-1))
+            
 
 
     def makeBoard(self):
@@ -148,17 +150,18 @@ class App(tk.Tk):
         if valid:
             self.board.delete("winbox")
             self.board.delete("wintext")
-            PlaySound("silence.wav", SND_FILENAME|SND_ASYNC)
+            #PlaySound("silence.wav", SND_FILENAME|SND_ASYNC)
             self.boardState[zero] = squareclicked.text
             self.boardState[pos] = "0"
             self.board.after(300, self.checkWin)
+            self.solve.config(text="Solve it!")
 
     def checkWin(self):
         if not self.moving and self.boardState == completedArrangement:
             self.board.create_rectangle(0, 260, 600, 340, fill="white", tags="winbox")
             self.board.create_text(300,300,text="You win!", font= self.buttonFont, tags="wintext")
-            if not self.muted:
-                PlaySound("fanfare2.wav", SND_FILENAME|SND_ASYNC)
+            #if not self.muted:
+                #PlaySound("fanfare2.wav", SND_FILENAME|SND_ASYNC)
 
     def moveSquare(self, square, xdiff, ydiff, loops):
         square.xpos += xdiff
@@ -186,31 +189,20 @@ class gameState():
         self.getAlternativeHeuristic()         # This calculated an estimated distance of this node to the target
         self.distanceFromStart = 0             # this is the shortest distance TO this state from the starting position
         self.previousState = None              # on the current best path, this holds a pointer to the stateobject previous to this one
+
         self.previousDirection = None          # from the previous state, this was the move that was made to reach this state
         self.previousTile = None               # and this is the tile that was moved. These are only used for the animation of the solution
 
-
-        
-    def printme(self):
-        # This was just for debugging. no longer needed
-        print()
-        for y in range(3):
-            for x in range(3):
-                if self.state[y*3+x] != "0":
-                    print(self.state[y*3+x], end=" ")
-                else:
-                    print(" ", end=" ")
-            print()
             
     def explore(self, stateList):
         # Looks at all the possible nodes neighbouring this one, by moving tiles and seeing if that arrangement
         # has already been seen
         if self.state.index("0")%3 <2:  # Is there a tile to the right of the space?
             newstate, tileMoved = self.move("r") # move the tile and get the new arrangement
-            if "".join(newstate) not in stateList.keys(): # if we have never need here before
+            if "".join(newstate) not in stateList.keys(): # if we have never been here before
                 newstateobject = gameState(newstate, self.target) # create the new gamestate node
                 stateList["".join(newstate)] = newstateobject # store it in a dictionary, for fast lookup
-            self.links[1] = stateList["".join(newstate)], tileMoved # put this new node into me list of links
+            self.links[1] = stateList["".join(newstate)], tileMoved # put this new node into my list of links
         # then we repeat with the other directions...
 
         if self.state.index("0")%3 >0:# Is there a tile to the left of the space?
@@ -219,12 +211,14 @@ class gameState():
                 newstateobject = gameState(newstate, self.target)
                 stateList["".join(newstate)] = newstateobject
             self.links[3] = stateList["".join(newstate)], tileMoved
+
         if self.state.index("0") >2 : # Is there a tile above the space?
             newstate, tileMoved = self.move("u")
             if "".join(newstate) not in stateList.keys():
                 newstateobject = gameState(newstate, self.target)
                 stateList["".join(newstate)] = newstateobject
             self.links[0] = stateList["".join(newstate)], tileMoved
+
         if self.state.index("0") <6 :  # Is there a tile below the space?
             newstate, tileMoved = self.move("d")
             if "".join(newstate) not in stateList.keys():
@@ -234,38 +228,37 @@ class gameState():
         
 
     def move(self, move):
-        newstate = self.state[:]
-        space = self.state.index("0")
+        newstate = self.state[:]  # make a copy of the layout
+                                  # arrays are global, so if we alter the original then
+                                  # we can't backtrack easily
+        space = self.state.index("0") # find the space
         if move == "d":
-            movetile = space+3
+            movetile = space+3 # identify which tile needs to move into the space
         if move == "u":
             movetile = space-3
         if move == "l":
             movetile = space-1
         if move == "r":
             movetile = space+1
-        newstate[space] = self.state[movetile]
+        newstate[space] = self.state[movetile]  # swap the movetile and the space
         newstate[movetile] = "0"
         return newstate, newstate[space] # send the new board position, and remember which tile was moved
                                          # (this is just for the benefit of the animation)
         
 
-    def getAlternativeHeuristic(self):   # get the total of the distances that each block has to travel to it's target destination
+    def getAlternativeHeuristic(self):   # get the total of the distances that each block has to travel to its target destination
         total = 0
         for x in range(9):
-            total += abs(self.state.index(str(x))%3 - self.target.index(str(x))%3)
-            total += abs(self.state.index(str(x))//3 - self.target.index(str(x))//3)
+            total += abs(self.state.index(str(x))%3 - self.target.index(str(x))%3) # count columns difference
+            total += abs(self.state.index(str(x))//3 - self.target.index(str(x))//3) # count rows difference
         self.heuristic = total
 
 
 def solve(startBoard, target, stateList, app):
     currentNode = startBoard
     moves = 0
-    #print("Start position:")
-    #currentNode.printme()
-    #print("Thinking...")
     if currentNode.state == target:
-        #print("Already solved")
+        # Already solved
         return None
     running = True
     while running:

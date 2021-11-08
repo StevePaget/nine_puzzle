@@ -19,28 +19,30 @@ class App(tk.Tk):
         self.titlefont = tkFont.Font(family="Arial", size=20, slant="italic")
         self.buttonFont = tkFont.Font(family="Arial", size=28)
         self.title("Nine Puzzle")
-        self.label = tk.Label(self, text="NinePuzzle", font=self.titlefont)
-        self.label.grid(row=0, column=0, sticky="W")
+        self.label = tk.Label(self, text="NinePuzzle", bg="lightblue",font=self.titlefont)
+        self.label.grid(row=0, column=0,columnspan=4, sticky="NSWE")
         self.board = tk.Canvas(self, width=600,height = 600, bg="grey")
-        self.board.grid(row = 1, column = 0, columnspan=4)
+        self.board.grid(row = 2, column = 0, columnspan=4)
         self.boardState = completedArrangement.copy()
         self.shufflebutton = tk.Button(self, text="Shuffle", font = self.titlefont, command = self.shuffle)
-        self.shufflebutton.grid(row=0, column=1, sticky="E")
+        self.shufflebutton.grid(row=1, column=1, sticky="E")
         self.solve = tk.Button(self, text="Solve it!", font=self.titlefont, command=self.autorun)
-        self.solve.grid(row=0, column=2, sticky="EW")
+        self.solve.grid(row=1, column=2, sticky="EW")
         self.muteimage = tk.PhotoImage(file="mute.png")
         self.bind("<Escape>", self.quit)
         self.unmuteimage = tk.PhotoImage(file="unmute.png")
         self.muteButton = tk.Button(image = self.muteimage, command = self.mutepress)
-        self.muteButton.grid(row=0, column=3, sticky="NSEW")
-        self.columnconfigure(1,weight=1)
+        self.muteButton.grid(row=1, column=3, sticky="NSEW")
+        self.columnconfigure(0,weight=1)
         self.columnconfigure(2, minsize = 180)
+        self.rowconfigure(0,minsize=50)
         self.wintext = None
         self.winbox = None
         self.moving = False
         self.locked = False
         self.makeBoard()
         self.muted = True
+        self.numMoves = 0
         self.mainloop()
         
     def quit(self,e):
@@ -61,6 +63,7 @@ class App(tk.Tk):
         self.boardState = shuffle(self.boardState)
         self.makeBoard()
         self.solve.config(text="Solve it!")
+        self.numMoves = 0
 
     def autorun(self):
         if self.locked:
@@ -155,11 +158,12 @@ class App(tk.Tk):
             self.boardState[pos] = "0"
             self.board.after(300, self.checkWin)
             self.solve.config(text="Solve it!")
+            self.numMoves += 1
 
     def checkWin(self):
         if not self.moving and self.boardState == completedArrangement:
             self.board.create_rectangle(0, 260, 600, 340, fill="white", tags="winbox")
-            self.board.create_text(300,300,text="You win!", font= self.buttonFont, tags="wintext")
+            self.board.create_text(300,300,text="You win in " + str(self.numMoves) + " moves!", font= self.buttonFont, tags="wintext")
             #if not self.muted:
                 #PlaySound("fanfare2.wav", SND_FILENAME|SND_ASYNC)
 
@@ -309,7 +313,7 @@ def solve(startBoard, target, stateList, app):
 
 
 def shuffle(state):
-    for x in range(5000):  # perform 5000 random moves to shuffle the board
+    for _ in range(5000):  # perform 5000 random moves to shuffle the board
         move = random.randint(0,3)
         zero = state.index("0")
         if move == 0 and zero>2:
